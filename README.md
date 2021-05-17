@@ -34,9 +34,13 @@ The most of kubernates clusters reside in private IDC or public cloud such as `T
 
 5. A new cluster type named `Registered` against existing `Baremetal` and `Imported` cluster,  that indicates the registered cluster join to hub cluster by tunnel agent
 
-## Cluster register work workflow 
+## Architecture
 
 <img src="docs/img/arch.png" title="architecture">
+
+## Cluster register work workflow 
+
+<img src="docs/img/register-workflow.png" title="workflow">
 
 ## Build binary
 
@@ -108,7 +112,7 @@ kubectl label nodes 10.0.0.80 platform.tkestack.io/is-tunnel-server=true
 kubectl create -f config/setup/excalibur-tunnel-server.yaml
 ```
 
-2. Get tunnel agent service account `ca` and `token` on `hub cluster`, then fill with corresponding section to secret `tke-tunnel-agent-secret` in `tke-tunnel-agent.yaml`
+2. Get tunnel agent service account `ca` and `token` on `hub cluster`, then fill with corresponding section to secret `excalibur-tunnel-agent-secret` in `excalibur-tunnel-agent.yaml`
 
 ```
 ## ca.crt
@@ -141,9 +145,9 @@ client =HTTP-CONNECT=> (:10263) proxy (:10262) <=GRPC= agent =HTTP=> SimpleHTTPS
 
 ```
 root@VM-0-80-ubuntu:~# kubectl get po -A |grep tunn
-kube-system   tke-tunnel-server-7854c5c54f-n4nbp        1/1     Running   1          151m
+kube-system   excalibur-tunnel-server-7854c5c54f-n4nbp        1/1     Running   1          151m
 root@VM-0-77-ubuntu:~# kubectl get po -A |grep tunn
-kube-system   tke-tunnel-agent-7597c6dd89-ncg52         1/1     Running   0          81m
+kube-system   excalibur-tunnel-agent-7597c6dd89-ncg52         1/1     Running   0          81m
 root@VM-0-77-ubuntu:~# 
 ```
 
@@ -154,18 +158,18 @@ root@VM-0-77-ubuntu:~# python -m SimpleHTTPServer
 Serving HTTP on 0.0.0.0 port 8000 ...
 ```
 
-3. Copy `tke-tunnel-client` binary (_output/local/bin/linux/amd64/) to tunnel server 
+3. Copy `excalibur-tunnel-client` binary (_output/local/bin/linux/amd64/) to tunnel server 
 
 ```
-root@VM-0-80-ubuntu:~# kubectl cp tke-tunnel-client `kubectl get po -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack 
+root@VM-0-80-ubuntu:~# kubectl cp excalibur-tunnel-client `kubectl get po -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack 
 ```
 
 4. Run client to get SimpleHTTPServer response by tunnel
 
 ```
-root@VM-0-80-ubuntu:~# kubectl exec -it `kubectl get po  -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh
+root@VM-0-80-ubuntu:~# kubectl exec -it `kubectl get po  -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh
 kubectl exec [POD] [COMMAND] is DEPRECATED and will be removed in a future version. Use kubectl exec [POD] -- [COMMAND] instead.
-/ # ./tke-tunnel-client --ca-cert=/run/secrets/kubernetes.io/serviceaccount/ca.crt --client-cert=/var/lib/tunnel-server/pki/tunnel-server-current.pem    --client-key=./var/lib/tunnel-server/pki/tunnel-server-current.pem  --proxy-host=132.232.31.102  --proxy-port=31503 --mode=http-connect  --request-host=172.22.0.77  --request-port=8000 --request-path=""
+/ # ./excalibur-tunnel-client --ca-cert=/run/secrets/kubernetes.io/serviceaccount/ca.crt --client-cert=/var/lib/tunnel-server/pki/tunnel-server-current.pem    --client-key=./var/lib/tunnel-server/pki/tunnel-server-current.pem  --proxy-host=132.232.31.102  --proxy-port=31503 --mode=http-connect  --request-host=172.22.0.77  --request-port=8000 --request-path=""
 I0228 23:40:17.032519     122 client.go:106] ClientCert set to "/var/lib/tunnel-server/pki/tunnel-server-current.pem".
 I0228 23:40:17.032555     122 client.go:107] ClientKey set to "./var/lib/tunnel-server/pki/tunnel-server-current.pem".
 I0228 23:40:17.032570     122 client.go:108] CACert set to "/run/secrets/kubernetes.io/serviceaccount/ca.crt".
@@ -228,11 +232,11 @@ client =HTTP-CONNECT=> (:10263) proxy (:10262) <=GRPC= agent =HTTP=> K8S API ser
 ```
 
 
-2.   Base on case 1,   copy `kubeconfig` binary to tunnel server pod
+2. Base on case 1, copy `kubeconfig` binary to tunnel server pod
 
 ```
 ## get admin token
-root@VM-0-77-ubuntu:~#sudo kubectl -n tkestack describe secret $(sudo kubectl -n tkestack get secret | (grep tke-tunnel-agent-sa-token || echo "$_") | awk '{print $1}') | grep token: | awk '{print $2}'
+root@VM-0-77-ubuntu:~#sudo kubectl -n tkestack describe secret $(sudo kubectl -n tkestack get secret | (grep excalibur-tunnel-agent-sa-token || echo "$_") | awk '{print $1}') | grep token: | awk '{print $2}'
 
 root@VM-0-77-ubuntu:~/mcm/excalibur# cat kubeconfig
 apiVersion: v1
@@ -252,7 +256,7 @@ users:
 - name: default-user
   user:
     token: <admin-token>
-root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp kubeconfig `kubectl get po -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack         
+root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp kubeconfig `kubectl get po -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack         
 root@VM-0-80-ubuntu:~/mcm/excalibur# 
 
 ```
@@ -260,9 +264,9 @@ root@VM-0-80-ubuntu:~/mcm/excalibur#
 3. Run client to get all pods from managed cluster by tunnel
 
 ```
-root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl exec -it `kubectl get po  -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh           
+root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl exec -it `kubectl get po  -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh           
 kubectl exec [POD] [COMMAND] is DEPRECATED and will be removed in a future version. Use kubectl exec [POD] -- [COMMAND] instead.
-/ # ./tke-tunnel-client --ca-cert=/run/secrets/kubernetes.io/serviceaccount/ca.crt --client-cert=/var/lib/tunnel-server/pki/tunnel-server-current.pem    --client-key=/var/lib/tunnel-server/pki/tunnel-server-current.pem  --proxy-host=132.232.31.102  --proxy-port=31503 --mode=http-connect  --request-host=kubernetes.default --request-port=443 --kubeconfig=./kubeconfig
+/ # ./excalibur-tunnel-client --ca-cert=/run/secrets/kubernetes.io/serviceaccount/ca.crt --client-cert=/var/lib/tunnel-server/pki/tunnel-server-current.pem    --client-key=/var/lib/tunnel-server/pki/tunnel-server-current.pem  --proxy-host=132.232.31.102  --proxy-port=31503 --mode=http-connect  --request-host=kubernetes.default --request-port=443 --kubeconfig=./kubeconfig
 I0301 01:11:04.638863     114 client.go:106] ClientCert set to "/var/lib/tunnel-server/pki/tunnel-server-current.pem".
 I0301 01:11:04.638888     114 client.go:107] ClientKey set to "/var/lib/tunnel-server/pki/tunnel-server-current.pem".
 I0301 01:11:04.638903     114 client.go:108] CACert set to "/run/secrets/kubernetes.io/serviceaccount/ca.crt".
@@ -285,7 +289,7 @@ Pod 7: kube-controller-manager-172.22.0.77
 Pod 8: kube-proxy-gfmhz
 Pod 9: kube-scheduler-172.22.0.77
 Pod 10: metrics-server-v0.3.6-794ccd69c8-nhmpd
-Pod 11: tke-tunnel-agent-55889f9c5c-jqwzs
+Pod 11: excalibur-tunnel-agent-55889f9c5c-jqwzs
 Pod 12: influxdb-0
 Pod 13: tke-auth-api-5ddc987db5-6k9vq
 Pod 14: tke-auth-api-5ddc987db5-z62s9
@@ -327,7 +331,7 @@ client =HTTP over GRPC+UDS=> (/tmp/uds-proxy) proxy (:10262) <=GRPC= agent =HTTP
   +----------------------------------------------------+
 ```
 
-1.  Base on case 2,  add `--uds-name=/tmp/uds-proxy` by `kubectl edit deployment tke-tunnel-server -n tkestack` on `managed cluster`
+1. Base on case 2,  add `--uds-name=/tmp/uds-proxy` by `kubectl edit deployment tke-excalibur-server -n tkestack` on `managed cluster`
 
 ```
          - --bind-address=0.0.0.0
@@ -338,14 +342,14 @@ client =HTTP over GRPC+UDS=> (/tmp/uds-proxy) proxy (:10262) <=GRPC= agent =HTTP
 
 ```
 
-2. Run client to get all pods from managed cluster by tunnel
+2. Run client to get all pods from registered cluster by tunnel
 
 ```
-root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp tke-tunnel-client `kubectl get po -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack  
-root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp kubeconfig `kubectl get po -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack  
-root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl exec -it `kubectl get po  -l k8s-app=tke-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh
+root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp excalibur-tunnel-client `kubectl get po -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack  
+root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl cp kubeconfig `kubectl get po -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"`:/ -n tkestack  
+root@VM-0-80-ubuntu:~/mcm/excalibur# kubectl exec -it `kubectl get po  -l k8s-app=excalibur-tunnel-server -n tkestack -o jsonpath="{.items[0].metadata.name}"` -n tkestack sh
 kubectl exec [POD] [COMMAND] is DEPRECATED and will be removed in a future version. Use kubectl exec [POD] -- [COMMAND] instead.
-/ # ./tke-tunnel-client  --proxy-uds=/tmp/proxy-master --proxy-host=""  --proxy-port=0 --mode=http-connect  --request-host=kubernetes.default  --request-port=443 --kubeconfig=./kubeconfig
+/ # ./excalibur-tunnel-client  --proxy-uds=/tmp/proxy-master --proxy-host=""  --proxy-port=0 --mode=http-connect  --request-host=kubernetes.default  --request-port=443 --kubeconfig=./kubeconfig
 I0302 08:52:56.592649     243 client.go:106] ClientCert set to "".
 I0302 08:52:56.592690     243 client.go:107] ClientKey set to "".
 I0302 08:52:56.592708     243 client.go:108] CACert set to "".
@@ -368,7 +372,7 @@ Pod 7: kube-controller-manager-172.22.0.77
 Pod 8: kube-proxy-gfmhz
 Pod 9: kube-scheduler-172.22.0.77
 Pod 10: metrics-server-v0.3.6-794ccd69c8-nhmpd
-Pod 11: tke-tunnel-agent-6bc94c58f7-gg458
+Pod 11: excalibur-tunnel-agent-6bc94c58f7-gg458
 Pod 12: influxdb-0
 Pod 13: tke-auth-api-5ddc987db5-6k9vq
 Pod 14: tke-auth-api-5ddc987db5-z62s9
@@ -406,6 +410,6 @@ Pod 41: tke-registry-controller-7bfb4799d8-ttt2n
 
 Currently, only support `PreStartTunnelAgent` and `PostStartTunnelAgent` hook to execute customized logic for different  cloud provider, for example:
 
-1. Tunnel agent responsible for report the managed cluster `admin` token to Tunnel server and persist it to global/meta cluster so that `tke-platform` use it to create k8s `ClientSet` to operator managed cluster, `tke` and `tkestack` provider will implements different logic according to the case 
+1. Tunnel agent responsible for report the registered cluster `admin` token to Tunnel server and persist it to global/meta cluster so that `tke-platform` use it to create k8s `ClientSet` to operator managed cluster, `tke` and `tkestack` provider will implements different logic according to the case 
 
 ## HA

@@ -1,0 +1,106 @@
+# excalibur tunnel agent rbac setting
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: excalibur-tunnel-agent-admin
+rules:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - '*'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: excalibur-tunnel-agent-sa
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: excalibur-tunnel-agent-admin-binding
+subjects:
+- kind: ServiceAccount
+  name: excalibur-tunnel-agent-sa
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: excalibur-tunnel-agent-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: excalibur-tunnel-agent
+  name: excalibur-tunnel-agent
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: excalibur-tunnel-agent
+  template:
+    metadata:
+      labels:
+        k8s-app: excalibur-tunnel-agent
+    spec:
+      serviceAccountName: excalibur-tunnel-agent-sa
+      volumes:
+      - name: serviceaccount
+        secret:
+          secretName: excalibur-tunnel-agent-secret
+      containers:
+      - command:
+        - /app/bin/excalibur-tunnel-agent
+        args:
+        - --cluster-name=cls-2frj669m
+        - --apiserver-addr=132.232.31.102:31501
+        - --tunnelserver-addr=132.232.31.102:31502
+        - --v=4
+        image: huxl/excalibur-tunnel-agent:v0.3.0
+        imagePullPolicy: Always
+        name: excalibur-tunnel-agent
+        env:
+        - name: TUNNEL_SERVER_NAMESPACE
+          value: tke
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        volumeMounts:
+        - mountPath: /var/lib/tunnel-agent/serviceaccount
+          name: serviceaccount
+      restartPolicy: Always
+---
+## the token and ca.crt from agent service account 
+## created in managed cluster for agent connect to
+## hub cluster api server enable rbac
+apiVersion: v1
+kind: Secret
+metadata:
+  name: excalibur-tunnel-agent-secret
+  namespace: kube-system
+data:
+  token: |-
+    ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNklsOUZUbWhwZVcxUFIxaHZUVGwyVGtoS1pGb3hUbDlrUVY5TVUycFpkMHM0UTAxc2QyaEhjak5XTkUwaWZRLmV5SnBjM01pT2lKcmRXSmxjbTVsZEdWekwzTmxjblpwWTJWaFkyTnZkVzUwSWl3aWEzVmlaWEp1WlhSbGN5NXBieTl6WlhKMmFXTmxZV05qYjNWdWRDOXVZVzFsYzNCaFkyVWlPaUpyZFdKbExYTjVjM1JsYlNJc0ltdDFZbVZ5Ym1WMFpYTXVhVzh2YzJWeWRtbGpaV0ZqWTI5MWJuUXZjMlZqY21WMExtNWhiV1VpT2lKck9ITmhaRzFwYmkxMGIydGxiaTFrWTNkdVppSXNJbXQxWW1WeWJtVjBaWE11YVc4dmMyVnlkbWxqWldGalkyOTFiblF2YzJWeWRtbGpaUzFoWTJOdmRXNTBMbTVoYldVaU9pSnJPSE5oWkcxcGJpSXNJbXQxWW1WeWJtVjBaWE11YVc4dmMyVnlkbWxqWldGalkyOTFiblF2YzJWeWRtbGpaUzFoWTJOdmRXNTBMblZwWkNJNklqUTVOemN6TXpFekxUZzBPRGd0TkdFMk1TMDVPRFJtTFRCalpERTFORGRqTW1NNE55SXNJbk4xWWlJNkluTjVjM1JsYlRwelpYSjJhV05sWVdOamIzVnVkRHByZFdKbExYTjVjM1JsYlRwck9ITmhaRzFwYmlKOS5aa1VodTI1ZlgxZ2FlTnFockpaOC1ybmYtaUplNGJFM09FX0lwQWYyeEJFLV9ZaExjMFdrME5qelV5WnVuVU5aUmNna2pLOXF2RlZNenhaSm9hbjBTRjlncFZRbWFPMEx0WUNLUk5WaEw1SHZVVjh1cm1hZ0paVjhMSFVpcWZudGR2ZEg4Wk80NzNJeGw5emE0cXp0VEd1N2l5MDUwZUg0aFpvekhhMjZ5ck1neThzcGZBRDlPWGhPMEdOOGIxdnBVQWNyRGV3enJCTkhGNUhoYnJoY3RGNG9HNXN5RmdrWGRFd0tNbWl1aUJnQ1MySzd1TENwc0JYM1lIWDNnQXR1UzBUN2ladEw3Zmt2NHN1cktGdmYxRUpwTElwNlduQWoxbFpweENsN3hMUGRvREtDdFAwQ2o2RFFCSFFrLVFzTXBXRWdaRFFiVWxfSDFZQjY1T3lqS3cK
+  ca.crt: |-
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUN5RENDQWJDZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1ETXdOREUwTWpBd09Gb1hEVE14TURNd01qRTBNakF3T0Zvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBS0ZUCngyQ1ArVE9jMHRaWU9ZNXlIU0Viam00bTh2SXF4eTdLQ3RWSGwyZzRmYUo1VTJ1TG5iaVB1MmUxc3puOXRjY0YKUElCMkw3eEt0ZTg5Z2d2U1B1RnhaNkdPSXMzTTJ3OHVZRmhsZHdIQ1VNTUozNkJVb3I0a3hYbkRiYXVEa2w0cwpvZm9sbVFZWTlzNkhXU3VBdWZwTi9xL21QdjAvWDVrQkVHOEVvYkl3dmZ1RWJRdGUwUHhKS0tWVjN3YkhvQUJrCmdUcFdIZGgzdnNqQ2VvN2VJSVdpbDRFay9xcE1aMEU4WlM2ZitEREZWY2MxSEFGb09waE1Hc3Zka3pJcm55TGYKT2Z6M3BqM2dOZGxuRFZUVUF0ZVRuQTR3eWd3UHhsQk40c1M0RWp0UHhQRGFFSEs2enZRZkVsSWQ4Tzc3OEk1TApzK2lvSTdLS2taSTZoVU9DNFVNQ0F3RUFBYU1qTUNFd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0RRWUpLb1pJaHZjTkFRRUxCUUFEZ2dFQkFFV1hab2k2SWFreW1CK0Vuc2NtRVY5Q2F5bXIKQ1dZMlhpUjhKc0tNUzVjd3hFQ2tzV2FXbEF5aFN2T0J6ZnloL2t6dTNROXl6OVphQ25TRnhyazZvVFptcnVmaQprd0N5NVNHTkRib1pRdXlKMUZhd2FIR1B3T2Qra2xURmhPYTgvUWFOdkEwTENTZ1cwRUdTQXFsK0h5R3pkMUpDClczcnVUalVKUm1nQ0NEcm1ZNFdlOGFBdGNTcnpIT2J3K09BeXo2WnAvMWxJc1FPNUowZWJ2dTVBWFY2S2VYUm4KRVJFa3gvTzlXb1RrbXoxaUF3aDBKbUpMMmtGZER2cDJaeVowcldXaDE5U05ZSk5sR05haVVVbGZUdUxnejJzbgpZVEZ5V2FHMVROUm1uR2l6am05cjduTW4vb3JOTTJGZHZ0RjVjVnZSOWVUQXhrbUVFRDk5c0pMbnBidz0KLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo=
+---
+apiVersion: v1
+kind: Service
+metadata:
+   name: cls-2frj669m
+   namespace: kube-system
+spec:
+  selector:
+    component: kube-apiserver
+  ports:
+  - port: 6443
+    targetPort: 6443

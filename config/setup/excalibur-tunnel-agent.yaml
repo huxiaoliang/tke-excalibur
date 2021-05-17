@@ -1,0 +1,100 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tkestack
+---
+# excalibur tunnel agent rbac setting
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: excalibur-tunnel-agent-admin
+rules:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - '*'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: excalibur-tunnel-agent-sa
+  namespace: tkestack
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: excalibur-tunnel-agent-admin-crb
+subjects:
+- kind: ServiceAccount
+  name: excalibur-tunnel-agent-sa
+  namespace: tkestack
+roleRef:
+  kind: ClusterRole
+  name: excalibur-tunnel-agent-admin
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    k8s-app: excalibur-tunnel-agent
+  name: excalibur-tunnel-agent
+  namespace: tkestack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: excalibur-tunnel-agent
+  template:
+    metadata:
+      labels:
+        k8s-app: excalibur-tunnel-agent
+    spec:
+      serviceAccountName: excalibur-tunnel-agent-sa
+      volumes:
+      - name: serviceaccount
+        secret:
+          secretName: excalibur-tunnel-agent-secret
+      containers:
+      - command:
+        - /app/bin/excalibur-tunnel-agent
+        args:
+        - --cluster-name=cls-85hbhf4r
+        - --apiserver-addr=132.232.31.102:31501
+        - --tunnelserver-addr=132.232.31.102:31502
+        - --v=4
+        image: huxl/excalibur-tunnel-agent:v0.3.0
+        imagePullPolicy: Always
+        name: excalibur-tunnel-agent
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: TUNNEL_SERVER_NAMESPACE
+          value: tkestack
+        volumeMounts:
+        - mountPath: /var/lib/tunnel-agent/serviceaccount
+          name: serviceaccount
+      restartPolicy: Always
+---
+# the token and ca.crt from agent service account 
+# created in managed cluster for agent connect to
+# hub cluster api server aim to enforce rbac
+apiVersion: v1
+kind: Secret
+metadata:
+  name: excalibur-tunnel-agent-secret
+  namespace: tkestack
+data:
+  token: |-
+    ZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNklrUlFhMTlWY0hVeGFGUlZWVGRNTVhFd1F6QjZZMm93VVRkMFlteE1RV1ppVG1RMGJVNUhVbnBSVG1jaWZRLmV5SnBjM01pT2lKcmRXSmxjbTVsZEdWekwzTmxjblpwWTJWaFkyTnZkVzUwSWl3aWEzVmlaWEp1WlhSbGN5NXBieTl6WlhKMmFXTmxZV05qYjNWdWRDOXVZVzFsYzNCaFkyVWlPaUowYTJWemRHRmpheUlzSW10MVltVnlibVYwWlhNdWFXOHZjMlZ5ZG1salpXRmpZMjkxYm5RdmMyVmpjbVYwTG01aGJXVWlPaUpsZUdOaGJHbGlkWEl0ZEhWdWJtVnNMV0ZuWlc1MExYTmhMWFJ2YTJWdUxYTjBPVGd5SWl3aWEzVmlaWEp1WlhSbGN5NXBieTl6WlhKMmFXTmxZV05qYjNWdWRDOXpaWEoyYVdObExXRmpZMjkxYm5RdWJtRnRaU0k2SW1WNFkyRnNhV0oxY2kxMGRXNXVaV3d0WVdkbGJuUXRjMkVpTENKcmRXSmxjbTVsZEdWekxtbHZMM05sY25acFkyVmhZMk52ZFc1MEwzTmxjblpwWTJVdFlXTmpiM1Z1ZEM1MWFXUWlPaUk0TVRBNE16azJNQzB3WWpaaExUUXdZakF0WVRFelppMWhPVEF5TnpkaU5qTTBOV1VpTENKemRXSWlPaUp6ZVhOMFpXMDZjMlZ5ZG1salpXRmpZMjkxYm5RNmRHdGxjM1JoWTJzNlpYaGpZV3hwWW5WeUxYUjFibTVsYkMxaFoyVnVkQzF6WVNKOS5uTFYyRFd3anp4VXRaNXgyM2dLSkF5RFlCX3k2dVBUYS05VXRmQXAxLUEyVzRZVTZIOWJFT0hnN3NCbmNYOU1QRnN5SVJxSU5UYUhTYXhlSFU4VFpXbldmTTVBdFVKMjAwTTBmOENpQmRiRk9BLXNKVmhuRldpTDBqSzFWN1B4OHNwZWpjSnAtRTJwM2JfdDMxZjFKUl90MlRIT1dPNnNUd0dwNTJDdnRTX1FTUjVHZHZiRW1GWDhUUGprekxYSjAtd2dTaVdJbEY5dHZuVGFad2FGTXhkQTB4MlZvZVVPeVRZUEI0bnZlYzFObUZuYnozZC1JVzc2MTFsa0JLSmVINzhjRUlFUnRQMVFvM0otRlZDeW1zTTlQci1QR0E4RXRONmtDdFJYWkVxcjJTblRPb3FEbXdvb19uMWpFVXQtQzAtaC1nZHk2TllqaDNTU2NwWXIwa0EK
+  ca.crt: |-
+    LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMrZ0F3SUJBZ0lCQURBTkJna3Foa2lHOXcwQkFRc0ZBREFWTVJNd0VRWURWUVFERXdwcmRXSmwKY201bGRHVnpNQjRYRFRJeE1EVXdOREF4TWpnMU1Wb1hEVE14TURVd01qQXhNamcxTVZvd0ZURVRNQkVHQTFVRQpBeE1LYTNWaVpYSnVaWFJsY3pDQ0FTSXdEUVlKS29aSWh2Y05BUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBTVJzClpoc0ZrYzZXT1RvQlQ5bVF1QlBGNjR6VG5CQzJTbm10RnFFaHViUEVGM0NhUEw2VkI0Z3Z6WC81Q1FCM2w4SUMKRE9XMm9DRm9Ibk5yRHVFM3ZRbkhtMUxiRS9yTjh6REtKVUZVUVR0RU9nc05oWUppSC9uU0swSXhhSkVFZTlJawpaV0lSbWFLYnR1bjRtNUpwWUNIOFhxTEJTMm5zd29vZ2I3M2h4YlRNSG5yMXg4d0xuRThnOXF2bW5NYy9nbFlWCmlnb2ZpWktRaGFJTEQ5SXBTeFV1cGhGR0ZhYW05ZjZkakpoK1JkNG9yZFlSTVQyQ3hOL3pXT056bHY1SnFxWUMKcjNrU2VDSHg0YklYYjh3N1lCMC9tTjFiZ25PL3RDdHBUSVBnQTRUNmhlaUp4TTlLdk8yK1RZbTJOeUJLdEZ4WApRUWp2ZCtLbG1YVmVyL0EwTnBNQ0F3RUFBYU5DTUVBd0RnWURWUjBQQVFIL0JBUURBZ0trTUE4R0ExVWRFd0VCCi93UUZNQU1CQWY4d0hRWURWUjBPQkJZRUZDUHdIYjJZYmRBUWpKc29wQUMyaXlPaFB6K0dNQTBHQ1NxR1NJYjMKRFFFQkN3VUFBNElCQVFBL2lMYWZVYk12N25ocjU2djhRbmZXUGxvNk9OL0hHWmlDVGdJRE9aaFlVR0QwRVRyZQpvZTVLK0JNUEIyaG9BZ0lWNENRV0JKbmJ6aE82Ynp5Wjh4TUNLZE9PZy9Jc1lYUUdSam9nM3FneURrbkxJY3A5CjFaK1RxaDQ0N092cnhGMzZZbmdrWWppWVZhNldKUnFFVlFVbnpjTlI3OGVXbi9ubkwwV0JpNkR2QzYwMW13MzcKcEE2eWllOVp4TitDS0FKd2FCSVJXUDk3WWV1VXh3Y2tvZWNlLzMvVUR3dkNzT3JYaHFwTTI3Nk5PV2lGS1BiVwpoZ25yQ0hOMm1MMkl3TDF3VTJwdkJWU2FtT1UwUFZzVXBSUGc3QjQxazhjd24yUUVCOU10aVhUdis4WmdscWxmCnNWYnNULzZJTDNEUkcySlBIYXFndTZDSThQeEdRdG1ya3kvNwotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==

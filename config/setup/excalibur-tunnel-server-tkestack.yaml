@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: x-tunnel-server-svc
+  namespace: tke
+  labels:
+    name: excalibur-tunnel-server
+spec:
+  type: NodePort 
+  ports:
+  - port: 10261
+    targetPort: 10261
+    name: reverseproxy
+    nodePort: 31501
+  - port: 10262
+    targetPort: 10262
+    name: tcp
+    nodePort: 31502
+  - port: 10263
+    targetPort: 10263
+    nodePort: 31503
+    name: https
+  selector:
+    k8s-app: excalibur-tunnel-server
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: excalibur-tunnel-server
+  namespace: tke
+  labels:
+    k8s-app: excalibur-tunnel-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: excalibur-tunnel-server
+  template:
+    metadata:
+      labels:
+        k8s-app: excalibur-tunnel-server
+    spec:
+      restartPolicy: Always
+      nodeSelector:
+        "platform.tkestack.io/is-tunnel-server": "true"
+      containers:
+      - name: excalibur-tunnel-server
+        image: huxl/excalibur-tunnel-server:v0.3.0
+        imagePullPolicy: Always
+        command:
+        - /app/bin/excalibur-tunnel-server
+        args:
+        - --bind-address=0.0.0.0
+        - --cert-ips=132.232.31.102,139.155.48.141,139.155.57.224
+        - --proxy-strategy=destHost
+        - --v=4
+        env:
+        - name: TUNNEL_SERVER_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace

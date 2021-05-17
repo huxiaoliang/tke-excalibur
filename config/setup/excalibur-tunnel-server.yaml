@@ -1,0 +1,172 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tkestack
+---
+# excalibur tunnel server rbac setting
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  name: excalibur-tunnel-server
+rules:
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - certificatesigningrequests
+  - certificatesigningrequests/approval
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+  - delete
+  - update
+  - patch
+- apiGroups:
+  - certificates.k8s.io
+  resources:
+  - signers
+  resourceNames:
+  - "kubernetes.io/legacy-unknown"
+  verbs:
+  - approve
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - configmaps
+  verbs:
+  - get
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - list
+  - watch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: excalibur-tunnel-server
+subjects:
+  - kind: ServiceAccount
+    name: excalibur-tunnel-server
+    namespace: tkestack
+roleRef:
+  kind: ClusterRole
+  name: excalibur-tunnel-server
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: excalibur-tunnel-server
+  namespace: tkestack
+---
+# excalibur tunnel server service and deployment
+apiVersion: v1
+kind: Service
+metadata:
+  name: x-tunnel-server-svc
+  namespace: tkestack
+  labels:
+    name: excalibur-tunnel-server
+spec:
+  type: NodePort 
+  ports:
+  - port: 10261
+    targetPort: 10261
+    name: reverseproxy
+    nodePort: 31501
+  - port: 10262
+    targetPort: 10262
+    name: tcp
+    nodePort: 31502
+  - port: 10263
+    targetPort: 10263
+    nodePort: 31503
+    name: https
+  selector:
+    k8s-app: excalibur-tunnel-server
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: excalibur-tunnel-server
+  namespace: tkestack
+  labels:
+    k8s-app: excalibur-tunnel-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: excalibur-tunnel-server
+  template:
+    metadata:
+      labels:
+        k8s-app: excalibur-tunnel-server
+    spec:
+      serviceAccountName: excalibur-tunnel-server
+      restartPolicy: Always
+      nodeSelector:
+        "platform.tkestack.io/is-tunnel-server": "true"
+      containers:
+      - name: excalibur-tunnel-server
+        image: huxl/excalibur-tunnel-server:v0.3.0
+        imagePullPolicy: Always
+        command:
+        - /app/bin/excalibur-tunnel-server
+        args:
+        - --bind-address=0.0.0.0
+        - --cert-ips=132.232.31.102,139.155.48.141,139.155.57.224
+        - --proxy-strategy=default
+        - --v=4
+        env:
+        - name: TUNNEL_SERVER_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+---
+# excalibur tunnel agent rbac setting, assume agent
+# has cluster-admin role to access to the api server
+# where tunnel server locate in (for test)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: excalibur-tunnel-agent-admin
+rules:
+- apiGroups:
+  - '*'
+  resources:
+  - '*'
+  verbs:
+  - '*'
+- nonResourceURLs:
+  - '*'
+  verbs:
+  - '*'
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: excalibur-tunnel-agent-sa
+  namespace: tkestack
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: excalibur-tunnel-agent-admin-binding
+subjects:
+- kind: ServiceAccount
+  name: excalibur-tunnel-agent-sa
+  namespace: tkestack
+roleRef:
+  kind: ClusterRole
+  name: excalibur-tunnel-agent-admin
+  apiGroup: rbac.authorization.k8s.io
+---
